@@ -1,0 +1,28 @@
+﻿"country","scale","disease_group","diseases","timespan","Institution_Organization","Access_Source","Researcher","Contact"
+"Bolivia","municipality","cardiovascular","cardiovascular","2001- 2019","Ministry of Health and Sports, Reportes Estadísticos Vigilancia Epidemiológica","Publicly available online: https://estadisticas.minsalud.gob.bo/Default_Vigilancia.aspx (Retrieved on April, 2021)","Nerida Nadia H. Valero","neridanadia@gmail.com"
+NA,NA,"respiratory","pneumonia; respiratory_symptomatic","2001- 2019",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; malaria","2001- 2019",NA,NA,NA,NA
+"Brasil","municipality","cardiovascular","conduct_cardiac; myocardial; cerebral_infarction; conjunctivitis","2008-2023","Ministry of Health","Publicly available online: https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/ ; https://datasus.saude.gov.br/informacoes-de-saude-tabnet/ ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chagasbr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/hantabr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/leishvbr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/ltabr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/malabr.def (Retrieved on March, 2023)","Paula Prist","prist@ecohealthalliance.org"
+NA,NA,"respiratory","bronchial_emphysema; chronic_resp; pneumonia; pharyngitis; tonsillitis; laryngitis; tracheitis; acute_resp; bronchitis; neoplasm_respiratory; pulmonary_embolism","2008-2023",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; hantavirus; malaria; visceral_leishmaniasis; zoonotic","2008-2023",NA,NA,NA,NA
+"Colombia","municipality","cardiovascular","cerebral_infarction; conduct_cardiac; conjunctivitis; myocardial","2007-2019","National Institute of Health","Publicly available online: https://portalsivigila.ins.gov.co/Paginas/Buscador.aspx","Catalina Zuluaga","americata@gmail.com"
+NA,NA,"respiratory","bronchitis; chronic_resp; laryngitis; pharyngitis; pneumonia; pulmonary_embolism; tonsillitis; tracheitis","2007-2019",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; malaria; rickettsia","2007-2019",NA,NA,NA,NA
+"Ecuador","parroquia","cardiovascular","cerebral_infarction; conduct_cardiac; myocardial","2015, 2016, 2019, 2020","National Institute of Statistics and Census","Publicly available online: https://www.ecuadorencifras.gob.ec/camas-y-egresos-hospitalarios/ (Retrieved on March, 2023)","Julia Barreto, Florencia Sangemano and Paula Prist","barretoj@alumni.usp.br"
+NA,NA,"respiratory","acute_resp; bronchial_emphysema; bronchitis; chronic_resp; laryngitis; neoplasm_respiratory; pharyngitis; pneumonia; tonsillitis; tracheitis","2015, 2016, 2019, 2020",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; malaria; rickettsia; visceral_leishmaniasis","2015, 2016, 2019, 2020",NA,NA,NA,NA
+"FR Guiana","municipality","cardiovascular","cerebral_infarction; conduct_cardiac; conjunctivitis; myocardial","2006-2023","National database: Pôle des Centres Délocalisés de Prévention et de Soin – Centre Hospitalier de Cayenne, Guyane, France","Data accessed upon request; https://www.health-data-hub.fr/depot","Benoît Dethoisy","bdethoisy@pasteur-cayenne.fr"
+NA,NA,"respiratory","acute_resp; bronchial_emphysema; chronic_resp; laryngitis; neoplasm_respiratory; pharyngitis; pneumonia; pulmonary_embolism; tonsillitis","2006-2023",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; hantavirus; malaria; rickettsia","2006-2023",NA,NA,NA,NA
+"Guyana","-","-","-","-","-","-","-","-"
+"Peru","municipality","cardiovascular","cerebral_infarction; conduct_cardiac","2002-2019","Ministry of Health","Available upon request at https://www.minsa.gob.pe/reunis/
+https://www.inei.gob.pe/estadisticas/indice-tematico/health/
+https://www.dge.gob.pe/portalnuevo/
+https://www.dge.gob.pe/portalnuevo/informacion-publica/casos-de-incidencias-acumuladas/
+https://www.dge.gob.pe/portalnuevo/informacion-publica/casos-de-incidencias-acumuladas/
+","Farah Carrasco","farahcarrasco@gmail.com"
+NA,NA,"respiratory","acute_resp; bronchial_emphysema; bronchitis; laryngitis; pharyngitis; pneumonia; tonsillitis; tracheitis","2002-2019",NA,NA,NA,NA
+NA,NA,"zoonotic","chagas; cutaneous_leishmaniasis; malaria_p_falciparum; malaria_p_vivax; rickettsia","2000-2019",NA,NA,NA,NA
+"Suriname","region/country","respiratory","Lower.respiratory.tract.infections; Upper.respiratory.tract.infections","2000-2019","Medical mission (healthcare provider)","Available upon request; https://www.medischezending.sr","Victoria Morpurgo","victoria.morpurgo@gmail.com"
+NA,NA,"zoonotic","cutaneous_leishmaniasis; malaria","2000-2019",NA,NA,NA,NA
+"Venezuela","parroquia","zoonotic","malaria_pFalci; malaria_pVivax","1995-2017","Ministry of Popular Power for Health compiled by Grillet et al. (2021)","Data publicly available among article materials from Grillet et al. (2021), 10.1371/journal.pntd.0008211","Adrian Gonzales/Helena Carpio","adgonzalez86@gmail.com"

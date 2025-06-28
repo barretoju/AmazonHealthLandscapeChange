@@ -1,0 +1,7 @@
+"Indicator","Description","Source","Spatial_Resolution"
+"Forest Cover Metric","Proportion of natural forest cover within and outside municipalities ('for_PLAND')","MapBiomas Collection 4 (code 1, 3 and 6)","30 m"
+"Fragmentation Metrics","Forest edge density ('for_ED'), patch density ('for_PD'), and aggregation index ('for_AI')","MapBiomas Collection 4, Fragstats","30 m"
+"Savanna Cover Metric","Proportion of savanna formation cover within municipalities ('savanna_PLAND')","MapBiomas Collection 4 (code 4)","30 m"
+"Non-forest Cover Metric","Proportion of non-forest natural formation cover within municipalities ('notforest_PLAND')","MapBiomas Collection 4 (code 10)","1 km"
+"Fire Events Indicators","Indicators of numbers of fire events ('fire_MIN', 'fire_MAX', 'fire_MEAN'), and accumulated burned area (sum of pixels burned at least once; 'fire_SUM') and burn frequency ('fire_COUNT')","MODIS Terra (MOD14A1), MAIAC AOD, NASA SEDAC","1 km"
+"PM2.5 (Calibrated)","PM2.5 concentrations derived from MAIAC AOD and calibrated with SEDAC data ('pm25_SUM')","MAIAC AOD, NASA SEDAC","1 km"

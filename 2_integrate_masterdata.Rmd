@@ -1,0 +1,187 @@
+---
+title: "Join health, pop and environmental data for Repository"
+author: "Julia Barreto"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    thumbnails: false
+    lightbox: true
+    gallery: false
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = F, message = F, warning = F, error= F)
+library(here)
+library(sf)
+library(tidyverse)
+library(kableExtra)
+library(readxl)
+library(tibble)
+```
+
+Load data from raw health datasets for each country:
+That prior work inclusing standardising columns and filtering data of diseases we aim to include, and actual cases, not suspicion
+```{r}
+# Data organized from raw health datasets for each country:
+load(here("data", "processed", "health_data.Rdata"))
+```
+
+Shapefile of selected amazon districts of the amazon:
+```{r}
+our_amazon <- st_read(here("data", "raw", "amazon_districts_ALBERS.shp")) 
+```
+
+# Join data
+
+## HEALTH
+```{r}
+combined_data <- our_amazon %>% as.data.frame() %>%
+  distinct(COD, .keep_all = TRUE) %>%  # Keep only unique rows on COD (e.g. SR)
+  dplyr::select(COD) %>% arrange(COD) %>%
+  left_join(master_COD, by= "COD")
+
+## next remove absent health data, as expected not all municipalities had health entries
+# use unmatched country column, only filled on health data, not amazon districts shp
+ combined_data <- combined_data %>%
+  drop_na(country)
+```
+
+## Population
+
+```{r}
+pop_data <- read.csv(here("data", "raw", "ourAmz_pop_00_20.csv"))
+
+combined_data <- combined_data %>%
+  left_join(pop_data, by= c( "COD", "year"))
+```
+
+## Landscape cover and fragmentation data
+
+Data extracted on ArcGIS and fragstats on forest cover and configuration for each municipality 
+
+```{r}
+frag_data <- read.csv(here("data", "raw", "frag_all.csv")) 
+
+combined_data <- combined_data %>%
+  left_join(frag_data, by= c("COD", "year")) 
+```
+
+## Fire incidence
+
+```{r}
+fire_data <- read.csv(here("data", "raw", "fire_all.csv"))
+
+combined_data <- combined_data %>%
+  left_join(fire_data, by= c("COD", "year"))
+```
+
+# Fire pollutants (PM2.5)
+
+```{r}
+pm25_data <- read.csv(here("data", "raw", "pm25_all.csv"))
+
+combined_data <- combined_data %>%
+  left_join(pm25_data, by= c("COD", "year"))
+```
+
+# Data structure and definitions
+
+```{r}
+combined_data <- combined_data %>%
+  dplyr::select(
+    # Sampling/organizing variables and population data
+    country, COD, year, pop,
+    # Main groups of diseases and their respective numbers
+    respiratory,
+    cardiovascular,
+    zoonotic,
+    # then individual zoonotic diseases
+    chagas, hantavirus, cutaneous_leishmaniasis, visceral_leishmaniasis, rickettsial_disease, malaria,
+    # Environmental data
+    ## Land use and forest fragmentation
+    for_PLAND, for_PD, for_ED, for_AI, 
+    savanna_PLAND, notforest_PLAND,
+    ## fire events and fire pollutants
+    fire_MIN, fire_MAX, fire_MEAN, fire_COUNT, fire_SUM, pm25_SUM
+  )
+
+# save final raw data:
+write.csv(combined_data,here("data", "processed", "amz_health_env.csv"), row.names = FALSE)
+```
+
+Now organize metadata, a data frame for the data structure and definitions
+
+```{r}
+data_structure <- tibble::tibble(
+  Variable = c(
+    # Administrative Metadata
+    "country", "COD", "year", "pop",
+
+    # Disease groups
+    "respiratory", "cardiovascular", "zoonotic",
+
+    # Individual zoonotic diseases
+    "chagas", "hantavirus", "cutaneous_leishmaniasis", 
+    "visceral_leishmaniasis", "rickettsial_disease", "malaria",
+
+    # Landscape Cover and Fragmentation
+    "for_PLAND", "savanna_PLAND", "notforest_PLAND", 
+    "for_PD", "for_ED", "for_AI",
+
+    # Fire Events
+    "fire_MIN", "fire_MAX", "fire_MEAN", "fire_COUNT", "fire_SUM",
+
+    # Air Pollution
+    "pm25_SUM"
+  ),
+
+  Definition = c(
+    "Country of the observation (e.g., Brazil, Peru)",
+    "Geographic identifier of the administrative unit (text)",
+    "Year of observation (YYYY)",
+    "Estimated population of the municipality (number of people)",
+
+    "Total reported respiratory disease cases (cases per year)",
+    "Total reported cardiovascular disease cases (cases per year)",
+    "Total reported zoonotic and vector-borne disease cases (cases per year)",
+
+    "Reported cases of Chagas disease (cases per year)",
+    "Reported cases of hantavirus infection (cases per year)",
+    "Reported cases of cutaneous leishmaniasis (cases per year)",
+    "Reported cases of visceral leishmaniasis (cases per year)",
+    "Reported cases of rickettsial diseases (cases per year)",
+    "Reported cases of malaria (cases per year)",
+
+    "Natural Forest cover in municipality (PLAND metric, %)",
+    "Savanna formation cover in municipality (PLAND metric, %)",
+    "Non-forest natural formations (PLAND metric, %)",
+    "Density of forest patches (patches per 100 ha)",
+    "Forest edge density (m/ha)",
+    "Forest Aggregation Index (0–100, unitless)",
+
+    "Minimum annual fire events (pixels with fire)",
+    "Maximum annual fire events (pixels/year)",
+    "Mean annual fire events (pixels/year)",
+    "Years with recorded fire (count)",
+    "Cumulative fire events over period (sum of pixels)",
+
+    "Sum of annual average PM2.5 concentration (μg/m³)"
+  )
+)
+
+
+# Render the table using kable and kableExtra for a polished look
+kable(data_structure, format = "html", escape = FALSE) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+```
+
+
+```{r, echo= FALSE}
+write.csv(data_structure, here("outputs", "tables", "metadata.csv"), 
+          row.names = FALSE)
+```
+

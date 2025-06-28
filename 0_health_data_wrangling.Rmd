@@ -1,0 +1,775 @@
+---
+title: "Health data across Amazon countries, wrangling"
+author: "Julia Barreto"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    thumbnails: false
+    lightbox: true
+    gallery: false
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = F, message = F, warning = F, error= F)
+library(here)
+library(docxtractr)
+library(tidyverse)
+library(cowplot)
+theme_set(theme_cowplot())
+library(kableExtra)
+library(readxl)
+library(ggplot2)
+library(patchwork)
+library(sf)
+library(janitor)
+```
+
+# Countries
+Standardise diseases names, group to comparison across countries.
+
+### Load data
+
+Tidy datasets for each specific country.
+```{r}
+for (file in list.files(
+  path = here("data", "raw"),
+  pattern = "^health_.*\\.csv$",
+  full.names = TRUE
+)) {
+  # Create object name by stripping directory and ".csv"
+  obj_name <- tools::file_path_sans_ext(basename(file))
+  
+  # Read CSV and assign to object in global environment
+  assign(obj_name, read.csv(file))
+}
+```
+
+
+# Bolivia
+
+First extract data containing country, COD, year,year, and standardize disease names and group into respiratory and cardiovascular. Besides standardizing disease name across countries, calculate number of cases. Note, since Bolivian dataset, I'll include all individual diseases, even if absent (e.g. hantavirus). 
+
+```{r}
+BO_tidy <- health_bolivia %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    chagas= sum(chagas, na.rm = TRUE), 
+    hantavirus= NA,
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE), 
+    visceral_leishmaniasis= NA, 
+    rickettsial_disease= NA,
+    malaria= sum(malaria, na.rm = TRUE),
+    zoonotic = sum(chagas, cutaneous_leishmaniasis, malaria, na.rm= TRUE),
+    respiratory = sum(pneumonia, respiratory_symptomatic, na.rm= TRUE),
+    cardiovascular = sum(cardiovascular, na.rm= TRUE)) %>%
+  dplyr::select(country, COD, year, chagas, hantavirus, cutaneous_leishmaniasis,
+                visceral_leishmaniasis, rickettsial_disease, malaria, zoonotic,
+                everything())
+
+head(BO_tidy, 20)
+```
+
+### Number of cases/diseases/year
+```{r}
+BO_year <- health_bolivia %>%
+  pivot_longer(7:dim(health_bolivia)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases)) %>%
+  # make sure only years that had data appear
+  drop_na(n_cases)
+
+
+Bolivia <- BO_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+   mutate(timespan= paste0(min, "- ", max)) %>%
+   # Disease broad grouping F-R vs zoonotic diseases
+   mutate(g_respcard= case_when(
+     diseases %in% c("chagas", "cutaneous_leishmaniasis", "malaria") ~ "zoonotic",
+     diseases %in% c("pneumonia", "respiratory_symptomatic") ~ "respiratory",
+     diseases == "cardiovascular" ~ "cardiovascular"))
+
+BO_year <- BO_year %>% ungroup() %>%
+    left_join(Bolivia, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases, g_respcard) %>%
+    arrange(diseases) %>%
+    drop_na()
+
+
+Bolivia %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+ 
+```
+
+
+```{r, echo= FALSE}
+(control <- data.frame(
+  country= c("Bolivia", NA, NA), scale= c("municipality", NA, NA), 
+  aggregate(diseases~ g_respcard ,data= Bolivia, FUN = function(x) paste0(x,collapse = '; ')),
+  timespan= c("2001- 2019","2001- 2019","2001- 2019"),
+  Institution_Organization= c("Ministry of Health and Sports, Reportes Estadísticos Vigilancia Epidemiológica", NA, NA),
+  Access_Source= c("Publicly available online: https://estadisticas.minsalud.gob.bo/Default_Vigilancia.aspx (Retrieved on April, 2021)", NA, NA),
+  Researcher= c("Nerida Nadia H. Valero", NA, NA),
+  Contact= c("neridanadia@gmail.com", NA, NA)))
+```
+
+# Brasil
+
+Brazilian dataset containing COD, year, diseases groups number of cases and number of diseases:
+
+```{r}
+BR_tidy <- health_brasil %>%
+  dplyr::select(-municipality, -department, -scale) %>%
+  mutate(year= as.numeric(year))
+
+head(BR_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+BR_year <- health_brasil %>%
+  pivot_longer(7:dim(health_brasil)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  mutate(year= as.numeric(year)) %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  # make sure only years that had data appear
+  drop_na(n_cases)
+
+Brasil <- BR_year %>%
+  ungroup() %>%
+  group_by(diseases) %>%
+  summarise_at(vars(year), list(max = max, min = min)) %>%
+  mutate(timespan = paste0(min, "- ", max)) %>%
+  mutate(g_respcard = case_when(
+          diseases %in% c("chagas", "cutaneous_leishmaniasis", "hantavirus", 
+                          "malaria", "visceral_leishmaniasis", "zoonotic") ~ 
+            "zoonotic",
+      diseases == "respiratory" ~ "respiratory",
+      diseases == "cardiovascular" ~ "cardiovascular"))
+
+(BR_year <- BR_year %>% ungroup() %>%
+    left_join(Brasil, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases, g_respcard) %>%
+    arrange(diseases))
+
+master_year <- BO_year %>% # join both
+  mutate(country= "Bolivia") %>% 
+  bind_rows(BR_year %>% mutate(country= "Brasil"))
+
+
+Brasil %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+```
+
+
+```{r, echo= FALSE}
+control <- rbind(control,
+  c(country= "Brasil", scale= "municipality", 
+    ## Edit Brasil to break out groups, 1st CARD: conduct_cardiac; myocardial; cerebral_infarction; conjunctivitis
+    g_respcard= "cardiovascular",
+    diseases= "conduct_cardiac; myocardial; cerebral_infarction; conjunctivitis",
+    timespan= "2008-2023",
+  Institution_Organization= "Ministry of Health", 
+  Access_Source= "Publicly available online: https://datasus.saude.gov.br/acesso-a-informacao/doencas-e-agravos-de-notificacao-de-2007-em-diante-sinan/ ; https://datasus.saude.gov.br/informacoes-de-saude-tabnet/ ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/chagasbr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/hantabr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/leishvbr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/ltabr.def ; http://tabnet.datasus.gov.br/cgi/deftohtm.exe?sinannet/cnv/malabr.def (Retrieved on March, 2023)",
+  Researcher= "Paula Prist",
+  Contact= "prist@ecohealthalliance.org"),
+  # RESP: bronchial_emphysema; chronic_resp; pneumonia; pharyngitis; tonsillitis; laryngitis; tracheitis; acute_resp; bronchitis; neoplasm_respiratory; pulmonary_embolism
+  c(country= NA, scale= NA,
+    g_respcard= "respiratory",
+    diseases= "bronchial_emphysema; chronic_resp; pneumonia; pharyngitis; tonsillitis; laryngitis; tracheitis; acute_resp; bronchitis; neoplasm_respiratory; pulmonary_embolism",
+  timespan= "2008-2023",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Brasil, FUN = function(x) paste0(x,collapse = '; '))[3,],
+  timespan= "2008-2023",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA))
+```
+
+
+# Colombia
+
+Likewise, dataset containing COD, year, diseases groups number of cases and number of diseases:
+```{r}
+CO_tidy <- health_colombia %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    chagas= sum(chagas, na.rm = TRUE), 
+    rickettsial_disease= sum(rickettsia, na.rm = TRUE),
+    malaria= sum(malaria, malaria.falciparum, malaria.vivax, na.rm = TRUE),
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE),
+    zoonotic = sum(chagas, rickettsia, cutaneous_leishmaniasis, malaria, na.rm= TRUE),
+    respiratory = sum(bronchitis, chronic_resp, pneumonia, pharyngitis, tonsillitis, laryngitis, tracheitis, pulmonary_embolism, na.rm= TRUE),
+    cardiovascular = sum(conjunctivitis, conduct_cardiac, cerebral_infarction, myocardial, na.rm= TRUE))
+
+head(CO_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+CO_year <- health_colombia %>%
+  pivot_longer(7:dim(health_colombia)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  # make sure only years that had data appear
+  drop_na(n_cases)
+
+Colombia <- CO_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+   mutate(timespan= paste0(min, "- ", max)) %>%
+   mutate(g_respcard = case_when(
+      diseases %in% c("chagas", "cutaneous_leishmaniasis", "malaria", 
+                     "malaria falciparum", "malaria vivax", "rickettsia") ~ "zoonotic",
+      diseases %in% c("bronchitis", "chronic_resp", "pharyngitis", "pneumonia",
+                      "laryngitis", "pulmonary_embolism", "tonsillitis", 
+                      "tracheitis") ~ "respiratory",
+        diseases %in% c("cerebral_infarction", "conduct_cardiac", "conjunctivitis",
+                      "myocardial") ~ "cardiovascular",
+      TRUE ~ NA_character_))
+
+(CO_year <- CO_year %>% ungroup() %>%
+    left_join(Colombia, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases, g_respcard) %>%
+    arrange(diseases) %>%
+    drop_na())
+
+master_year <- master_year %>%  
+  bind_rows(CO_year %>%
+  mutate(country= "Colombia"))
+
+
+Colombia %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+ 
+```
+
+
+```{r, echo= FALSE}
+control <- rbind(control,
+  c(country= "Colombia", scale= "municipality", aggregate(diseases~ g_respcard,data= Colombia, FUN = function(x) paste0(x,collapse = '; '))[1,],
+  timespan= "2007-2019",
+  Institution_Organization= "National Institute of Health", 
+  Access_Source= "Publicly available online: https://portalsivigila.ins.gov.co/Paginas/Buscador.aspx",
+  Researcher= "Catalina Zuluaga",
+  Contact= "americata@gmail.com"),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard, data= Colombia, FUN = function(x) paste0(x,collapse = '; '))[2,],
+  timespan= "2007-2019",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Colombia, FUN = function(x) paste0(x,collapse = '; '))[3,],
+  timespan= "2007-2019",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA))
+```
+
+
+
+# Ecuador
+
+Ecuatorian dataset containing COD, year, diseases groups number of cases and number of diseases:
+
+```{r}
+EC_tidy <- health_ecuador %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    chagas= sum(chagas, na.rm = TRUE), 
+    rickettsial_disease= sum(rickettsia, na.rm = TRUE),
+    malaria= sum(malaria, na.rm = TRUE),
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE),
+    visceral_leishmaniasis= sum(visceral_leishmaniasis, na.rm = TRUE),
+    zoonotic = sum(chagas, rickettsia, cutaneous_leishmaniasis, visceral_leishmaniasis, malaria, na.rm= TRUE), 
+    respiratory = sum(bronchitis, bronchial_emphysema, laryngitis, acute_resp, chronic_resp, pharyngitis, pneumonia, tonsillitis, tracheitis, neoplasm_respiratory, na.rm= TRUE), 
+    cardiovascular = sum(myocardial, cerebral_infarction, conduct_cardiac, na.rm= TRUE))
+
+head(EC_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+EC_year <- health_ecuador %>%
+  pivot_longer(7:dim(health_ecuador)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  # make sure only years that had data appear
+  drop_na(n_cases)
+
+Ecuador <- EC_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+   mutate(timespan= paste0(min, "- ", max)) %>%
+   mutate(g_respcard = case_when(
+     diseases %in% c("chagas", "rickettsia", "cutaneous_leishmaniasis",
+                     "visceral_leishmaniasis", "malaria") ~ "zoonotic",
+      diseases %in% c("bronchitis", "bronchial_emphysema", "laryngitis", "acute_resp", "chronic_resp", "pharyngitis", "pneumonia", "tonsillitis", "tracheitis", "neoplasm_respiratory") ~ "respiratory",
+        diseases %in% c("cerebral_infarction", "conduct_cardiac", "myocardial") ~ "cardiovascular",
+      TRUE ~ NA_character_))
+
+(EC_year <- EC_year %>% ungroup() %>%
+    left_join(Ecuador, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases,g_respcard) %>%
+    arrange(diseases) %>%
+    drop_na())
+
+master_year <- master_year %>%  
+  bind_rows(EC_year %>%
+  mutate(country= "Ecuador"))
+
+
+Ecuador %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+ 
+```
+ 
+```{r, echo= FALSE}
+control <- rbind(control,
+  c(country= "Ecuador", scale= "parroquia", aggregate(diseases~ g_respcard,data= Ecuador, FUN = function(x) paste0(x,collapse = '; '))[1,],
+  timespan= "2015, 2016, 2019, 2020",
+  Institution_Organization= "National Institute of Statistics and Census",
+  Access_Source="Publicly available online: https://www.ecuadorencifras.gob.ec/camas-y-egresos-hospitalarios/ (Retrieved on March, 2023)", 
+  Researcher= "Julia Barreto, Florencia Sangemano and Paula Prist",
+  Contact= "barretoj@alumni.usp.br"),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Ecuador, FUN = function(x) paste0(x,collapse = '; '))[2,],
+  timespan= "2015, 2016, 2019, 2020",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Ecuador, FUN = function(x) paste0(x,collapse = '; '))[3,],
+  timespan= "2015, 2016, 2019, 2020",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA))
+```
+
+
+# Guiana FR
+
+```{r}
+GF_tidy <- health_guianafr  %>%
+#treat guiana francesa COD that contaisn . and _
+  mutate(COD= gsub("[._]", "", COD)) %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    chagas= sum(chagas, na.rm = TRUE), 
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE), 
+    malaria= sum(malaria, na.rm = TRUE),
+    hantavirus= sum(hantavirus, na.rm = TRUE),
+    rickettsial_disease= sum(rickettsia, na.rm = TRUE),
+    zoonotic = sum(chagas, rickettsia, cutaneous_leishmaniasis, malaria, hantavirus, na.rm= TRUE), 
+    respiratory = sum(laryngitis, acute_resp,
+                              chronic_resp, pharyngitis,
+                              pneumonia, tonsillitis,
+                              neoplasm_respiratory,
+                              pulmonary_embolism,
+                              na.rm= TRUE), 
+    cardiovascular = sum(bronchial_emphysema, myocardial,
+                                 cerebral_infarction, 
+                                 conduct_cardiac, conjunctivitis,
+                                 na.rm= TRUE))
+
+head(GF_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+GF_year <- health_guianafr %>%
+  pivot_longer(7:dim(health_guianafr)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  # make sure only years that had data appear
+  drop_na(n_cases)
+
+FR_Guiana <- GF_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+  mutate(timespan= paste0(min, "- ", max)) %>%
+   mutate(g_respcard = case_when(
+     diseases %in% c("chagas", "hantavirus",
+                     "cutaneous_leishmaniasis", 
+                     "malaria", "rickettsia") ~ "zoonotic",
+     diseases %in% c("bronchial_emphysema", "laryngitis",
+                      "acute_resp", "chronic_resp", "pharyngitis",
+                      "pneumonia", "tonsillitis", "neoplasm_respiratory",
+                      "pulmonary_embolism") ~ "respiratory",
+        diseases %in% c( "myocardial", "cerebral_infarction",
+                         "conduct_cardiac", "conjunctivitis") ~ "cardiovascular",
+      TRUE ~ NA_character_))
+
+(GF_year <- GF_year %>% ungroup() %>%
+    left_join(FR_Guiana, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases,g_respcard) %>%
+    arrange(diseases) %>%
+    drop_na())
+
+master_year <- master_year %>%  bind_rows(GF_year %>%
+  mutate(country= "French Guiana"))
+
+
+FR_Guiana %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+ 
+```
+
+
+```{r}
+control <- rbind(control,
+  c(country= "FR Guiana", scale= "municipality", aggregate(diseases~ g_respcard,data= FR_Guiana, FUN = function(x) paste0(x,collapse = '; '))[1,],
+  timespan= "2006-2023",
+  Institution_Organization= "National database: Pôle des Centres Délocalisés de Prévention et de Soin – Centre Hospitalier de Cayenne, Guyane, France", 
+   Access_Source="Data accessed upon request; https://www.health-data-hub.fr/depot",
+  Researcher= "Benoît Dethoisy",
+  Contact= "bdethoisy@pasteur-cayenne.fr"),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= FR_Guiana, FUN = function(x) paste0(x,collapse = '; '))[2,],
+  timespan= "2006-2023",
+  Institution_Organization= NA,
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= FR_Guiana, FUN = function(x) paste0(x,collapse = '; '))[3,],
+  timespan= "2006-2023",
+  Institution_Organization= NA,
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+  # Include Guyana line right agter French Guiana
+  c(country= "Guyana", scale= "-", g_respcard= "-", diseases = "-",
+  timespan= "-",
+  Institution_Organization= "-", 
+  Access_Source="-",
+  Researcher= "-",
+  Contact= "-"))
+```
+
+
+# Peru
+
+```{r}
+PE_tidy <- health_peru %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    chagas= sum(chagas, na.rm = TRUE), 
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE), 
+    malaria= sum(malaria_p_falciparum, malaria_p_vivax, na.rm = TRUE),
+    rickettsial_disease= sum(rickettsia, na.rm = TRUE),
+    zoonotic = sum(chagas, cutaneous_leishmaniasis, rickettsia, malaria, na.rm= TRUE), 
+    respiratory = sum(bronchial_emphysema, acute_resp, 
+            bronchitis, pharyngitis,laryngitis, pneumonia,
+            tonsillitis, tracheitis, na.rm= TRUE), 
+    cardiovascular = sum(conduct_cardiac, cerebral_infarction, na.rm= TRUE))
+
+head(PE_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+PE_year <- health_peru %>%
+  pivot_longer(7:dim(health_peru)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  drop_na(n_cases)
+
+Peru <- PE_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+   mutate(timespan= paste0(min, "- ", max)) %>%
+  mutate(g_respcard = case_when(
+     diseases %in% c("chagas", "cutaneous_leishmaniasis","rickettsia",
+                     "malaria_p_falciparum","malaria_p_vivax") ~ "zoonotic",
+      diseases %in% c("bronchial_emphysema", "acute_resp",
+                      "neoplasm_respiratory",
+                      "bronchitis", "pharyngitis", "laryngitis",
+                      "pneumonia", "tonsillitis", "tracheitis") ~ "respiratory",
+        diseases %in% c("conduct_cardiac", "cerebral_infarction") 
+      ~ "cardiovascular",
+      TRUE ~ NA_character_))
+
+(PE_year <- PE_year %>% ungroup() %>%
+    left_join(Peru, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases,g_respcard) %>%
+    arrange(diseases) %>%
+    drop_na())
+
+master_year <- master_year %>%  bind_rows(PE_year %>%
+  mutate(country= "Peru"))
+
+
+Peru %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+```
+
+  
+```{r, echo= FALSE}
+control <- rbind(control,
+  c(country= "Peru", scale= "municipality", aggregate(diseases~ g_respcard,data= Peru, FUN = function(x) paste0(x,collapse = '; '))[1,],
+  timespan= "2002-2019",
+  Institution_Organization= "Ministry of Health", 
+Access_Source= "Available upon request at https://www.minsa.gob.pe/reunis/
+https://www.inei.gob.pe/estadisticas/indice-tematico/health/
+https://www.dge.gob.pe/portalnuevo/
+https://www.dge.gob.pe/portalnuevo/informacion-publica/casos-de-incidencias-acumuladas/
+https://www.dge.gob.pe/portalnuevo/informacion-publica/casos-de-incidencias-acumuladas/
+",
+Researcher= "Farah Carrasco",
+            Contact= "farahcarrasco@gmail.com"),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Peru, FUN = function(x) paste0(x,collapse = '; '))[2,],
+  timespan= "2002-2019",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA),
+c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Peru, FUN = function(x) paste0(x,collapse = '; '))[3,],
+  timespan= "2000-2019",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA))
+```
+
+
+# Suriname
+
+Region level data that we could not find spatial data to match, so we summed it up to country-level.
+
+```{r}
+SR_tidy <- health_suriname %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(
+    zoonotic = sum(cutaneous_leishmaniasis, malaria, na.rm= TRUE),
+    cutaneous_leishmaniasis= sum(cutaneous_leishmaniasis, na.rm = TRUE), 
+    malaria= sum(malaria, na.rm= TRUE),
+    respiratory= sum(Upper.respiratory.tract.infections, Lower.respiratory.tract.infections, na.rm = TRUE))
+
+head(SR_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+SR_year <- health_suriname %>%
+  pivot_longer(7:dim(health_suriname)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  drop_na(n_cases)
+
+Suriname <- SR_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+    summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+  mutate(timespan= paste0(min, "- ", max)) %>%
+   mutate(g_respcard = case_when(
+     diseases %in% c("cutaneous_leishmaniasis", "malaria") ~ "zoonotic",
+     TRUE ~ "respiratory"))
+
+(SR_year <- SR_year %>% ungroup() %>%
+    left_join(Suriname, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases, g_respcard) %>%
+    arrange(diseases) )
+
+master_year <- master_year %>%  bind_rows(SR_year %>%
+  mutate(country= "Suriname"))
+
+
+Suriname %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+```
+
+
+```{r, echo= FALSE}
+
+control <- rbind(control,
+  c(country= "Suriname", scale= "region/country", aggregate(diseases~ g_respcard,data= Suriname, FUN = function(x) paste0(x,collapse = '; '))[1,],
+  timespan= "2000-2019",
+  Institution_Organization= "Medical mission (healthcare provider)",
+  Access_Source="Available upon request; https://www.medischezending.sr", 
+  Researcher= "Victoria Morpurgo",
+  Contact= "victoria.morpurgo@gmail.com"),
+  c(country= NA, scale= NA, aggregate(diseases~ g_respcard,data= Suriname, FUN = function(x) paste0(x,collapse = '; '))[2,],
+  timespan= "2000-2019",
+  Institution_Organization= NA, 
+  Access_Source= NA,
+  Researcher= NA,
+  Contact= NA))
+```
+
+# Venezuela
+  
+  No department columns, only at the scale of analysis level= parroquia (sub-level of municipality)
+
+```{r}
+VE_tidy <- health_venezuela %>%
+  ungroup() %>% group_by(country, COD, year) %>%
+  summarise(malaria= sum(malaria_pVivax, malaria_pFalci, na.rm = TRUE)) %>%
+  mutate(zoonotic = malaria)
+
+head(VE_tidy, 20)
+```
+
+
+### Number of cases/diseases/year
+```{r}
+VE_year <- health_venezuela %>%
+  pivot_longer(7:dim(health_venezuela)[2], 
+               names_to = "diseases", 
+               values_to = "n_cases") %>%
+  group_by(year, diseases) %>%
+  summarise(n_cases= sum(n_cases, na.rm = TRUE)) %>%
+  drop_na(n_cases)
+
+Venezuela <- VE_year %>% ungroup() %>% 
+  group_by(diseases) %>% 
+  summarise_at(vars(year),
+                 list(max = max, min= min)) %>%
+   mutate(timespan= paste0(min, "- ", max)) %>%
+  mutate(g_respcard = case_when(
+     diseases %in% c("malaria_pVivax", "malaria_pFalci") ~ "zoonotic",
+     TRUE ~ NA_character_))
+
+(VE_year <- VE_year %>% ungroup() %>%
+    left_join(Venezuela, by= "diseases") %>%
+    dplyr::select(diseases, year, n_cases,g_respcard) %>%
+    arrange(diseases))
+
+master_year <- master_year %>%  
+  bind_rows(VE_year %>%
+  mutate(country= "Venezuela")) %>%
+  dplyr::select(country, everything())
+
+
+Venezuela %>% arrange(diseases) %>% 
+  dplyr::select(-min, -max)
+```
+
+
+```{r, echo= FALSE}
+
+control <- rbind(control,
+  c(country= "Venezuela", scale= "parroquia", aggregate(diseases~ g_respcard,data= Venezuela, FUN = function(x) paste0(x,collapse = '; ')),
+  timespan= "1995-2017",
+  Institution_Organization= "Ministry of Popular Power for Health compiled by Grillet et al. (2021)",
+  Access_Source= "Data publicly available among article materials from Grillet et al. (2021), 10.1371/journal.pntd.0008211",
+Researcher= "Adrian Gonzales/Helena Carpio",
+            Contact= "adgonzalez86@gmail.com"))
+```
+
+
+
+# Master datas
+
+## Disease grouping and ICD
+
+```{r}
+diseases <- read_xlsx(here("data", "raw", "tab1_diseases_code_type.xlsx"))
+
+knitr::kable(diseases, booktabs = TRUE) %>%
+  kable_styling(latex_options = "scale_down") 
+```
+
+## Control
+
+Data containing summary data per country:
+
+```{r}
+names(control)[3] <- "disease_group"
+
+write_excel_csv(control, here("outputs", "tables", "health_summary.csv"))
+
+knitr::kable(control, booktabs = TRUE) %>%
+  kable_styling(latex_options = "scale_down") %>%
+  column_spec(1:ncol(control), width = "auto")
+```
+
+## Combine data per COD/year
+
+```{r}
+master_COD <- bind_rows(BO_tidy, BR_tidy, CO_tidy, EC_tidy,
+                        GF_tidy, PE_tidy, SR_tidy, VE_tidy) %>%
+  group_by(country, COD, year) %>%
+  dplyr::select(country, COD, year, chagas, hantavirus,
+  cutaneous_leishmaniasis, visceral_leishmaniasis, rickettsial_disease, 
+  malaria, zoonotic, everything())
+
+write_excel_csv(master_COD, here("data", "processed", "master_health.xlsx"))
+
+# Stratified random sample: ensure at least one row per country
+set.seed(123)  # for reproducibility
+stratified_sample <- master_COD %>%
+  group_by(country) %>%
+  slice_sample(n = 5) %>%   # take 5 rows per country
+  ungroup() %>%
+  bind_rows(
+    master_COD %>%
+      anti_join(., master_COD %>% group_by(country) %>% slice_sample(n = 1), by = colnames(master_COD)) %>%
+      slice_sample(n = max(0, 50 - nrow(.) - length(unique(master_COD$country))))
+  )
+
+# Print table
+knitr::kable(stratified_sample, booktabs = TRUE) %>%
+  kable_styling(latex_options = "scale_down")
+```
+
+# Save Rdata
+
+Data explained:
+
+    - control: control data to display available information per country (Institution, access, responsible, researcher, contact, year range, diseases available)
+    
+    - master_year: country-level number of cases, per disease, per year, contains groups
+    
+    - master_COD: COD level, yearly number of cases disease = HEALTH MASTER DATA
+    
+    - Country named df (e.g. Bolivia) it's the diseases per country, timespan for each and grouping (respiratory, cardiovascular or zoo/V-B disease)
+    
+    - "country code"_tidy (e.g. BO_tidy) it's COD level per year, with diseases, grouping (respiratory, cardiovascular or zoo/V-B disease) and number of diseases in wide format
+    
+    - "country code"_year (e.g. BO_year) it's number of total cases of diseases per year, with respective grouping (respiratory, cardiovascular or zoo/V-B disease)
+
+```{r}
+save(# control plans
+     control, master_year, master_COD,
+     # Country, max min years, by disease group
+     Bolivia, Brasil, Colombia, Ecuador, FR_Guiana, Peru, Suriname, Venezuela,
+     # COD year and wide diseases, groups and n_groups
+     BO_tidy, BR_tidy, CO_tidy, EC_tidy, GF_tidy, PE_tidy, SR_tidy, VE_tidy, 
+     # by disease, year, country n_cases and groups
+     BO_year, BR_year, CO_year, EC_year, GF_year, PE_year, SR_year, VE_year,
+     file= here("data", "processed", "health_data.Rdata"))
+```
+

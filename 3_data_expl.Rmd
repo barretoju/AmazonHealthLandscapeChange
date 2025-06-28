@@ -1,0 +1,939 @@
+---
+title: "Countries health data exploration and plots for Amazon project"
+author: "Julia Barreto"
+date: "`r Sys.Date()`"
+output:
+  rmdformats::readthedown:
+    highlight: kate
+    thumbnails: false
+    lightbox: true
+    gallery: false
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(cache = F, message = F, warning = F, error= F)
+library(here)
+library(skimr)
+library(tidyverse)
+library(cowplot)
+theme_set(theme_cowplot())
+library(kableExtra)
+library(readxl)
+library(ggplot2)
+library(patchwork)
+library(sf)
+library(mapview)
+# library(janitor)
+```
+
+
+# Loadind and overviewing data
+
+Wrangled and organized health data.
+
+```{r}
+# load(here("data", "R01", "tidy_health.Rdata"))
+combined_data <- read.csv(here("data", "combined_data.csv"))
+
+# Structure of the data
+str(combined_data)
+```
+
+
+```{r}
+skim(combined_data)
+```
+
+Summarize by country and disease:
+```{r}
+country_disease_summary <- combined_data %>%
+  pivot_longer(
+    cols = c(respiratory, cardiovascular, chagas:malaria), 
+    names_to = "disease", 
+    values_to = "cases"
+  ) %>%
+  group_by(country, disease) %>%
+  summarise(
+    total_cases = if (all(is.na(cases))) NA else sum(cases, na.rm = TRUE),
+    avg_cases_per_year = if (all(is.na(cases))) NA else mean(cases, na.rm = TRUE),
+    max_cases = if (all(is.na(cases))) NA else max(cases, na.rm = TRUE),
+    year_max_cases = if (all(is.na(cases))) NA else year[which.max(cases)],  # Year with the highest cases
+    year_min_cases = if (all(is.na(cases))) NA else year[which.min(cases)],  # Year with the lowest cases
+    year_range = if (all(is.na(cases))) NA else paste0(
+      min(year[!is.na(cases)], na.rm = TRUE), "-", 
+      max(year[!is.na(cases)], na.rm = TRUE)
+    ),  # Time range of non-NA data
+    .groups = "drop"
+  )
+
+# View the summary
+print(country_disease_summary)
+```
+Summarize by disease across all countries and years:
+
+```{r}
+disease_summary <- combined_data %>%
+  pivot_longer(
+    cols = c(respiratory, cardiovascular, chagas:malaria), 
+    names_to = "disease", 
+    values_to = "cases"
+  ) %>%
+  group_by(disease) %>%
+  summarise(
+    total_cases = sum(cases, na.rm = TRUE),
+    avg_cases_per_year = if (all(is.na(cases))) NA else mean(cases, na.rm = TRUE),
+    max_cases = if (all(is.na(cases))) NA else max(cases, na.rm = TRUE),
+    num_countries = n_distinct(country[!is.na(cases)]),  # Number of countries with data
+    year_range = paste0(
+      min(year[!is.na(cases)], na.rm = TRUE), "-", 
+      max(year[!is.na(cases)], na.rm = TRUE)
+    ),  # Year range of non-NA data
+    .groups = "drop"
+  )
+
+# View the summary
+print(disease_summary)
+```
+
+# HEALTH
+
+```{r}
+country_disease_year <- combined_data %>%
+  ungroup() %>%
+  group_by(country, year) %>%
+  summarise(across(c(respiratory, cardiovascular, chagas:malaria)), na.rm= TRUE, 
+            .groups = "drop") %>%
+  pivot_longer(c(respiratory, cardiovascular, chagas:malaria), 
+               names_to = 'diseases', 
+               values_to = 'n_cases') %>%
+  dplyr::select(country, year, diseases, n_cases)
+
+complete_data <- country_disease_year %>%
+  dplyr::ungroup() %>%
+  tidyr::complete(
+    country,
+    diseases,
+    year = 1995:2023,
+    fill = list(n_cases = NA)
+  ) %>%
+  mutate(
+    diseases = factor(diseases, levels = c(
+      "respiratory",
+      "cardiovascular",
+      "chagas",
+      "hantavirus",
+      "cutaneous_leishmaniasis",
+      "visceral_leishmaniasis",
+      "rickettsia",
+      "malaria")),
+    country = factor(country, levels = rev(sort(unique(country))))) %>% 
+  drop_na(diseases)
+
+
+# Define new labels for diseases
+disease_labels <- c(
+  "respiratory" = "Respiratory",
+  "cardiovascular" = "Cardiovascular",
+  "chagas" = "Chagas",
+  "hantavirus" = "Hantavirus",
+  "cutaneous_leishmaniasis" = "Cutaneous Leishmaniasis",
+  "visceral_leishmaniasis" = "Visceral Leishmaniasis",
+  "rickettsia" = "Rickettsia",
+  "malaria" = "Malaria"
+)
+
+# Define the color palette for diseases
+disease_colors <- c(
+  "respiratory" = "#990000",
+  "cardiovascular" = "#FF9933",
+  "chagas" = "#A9DFBF",
+  "hantavirus" = "#58D68D",
+  "cutaneous_leishmaniasis" = "#28B463",
+  "visceral_leishmaniasis" = "#1D8348",
+  "rickettsia" = "#117A65",
+  "malaria" = "#0E6655"
+)
+
+ggplot(complete_data, aes(x = year, y = country, color = diseases)) +
+  geom_line(data = subset(complete_data, !is.na(n_cases))) +
+  geom_point(data = subset(complete_data, !is.na(n_cases))) + # Display only where data exists
+  facet_wrap(~ diseases, labeller = labeller(diseases = disease_labels), ncol = 3) +
+  scale_color_manual(values = disease_colors) +
+  labs(x = "Year",
+    y = "Country") +
+  theme(
+    strip.text = element_text(size = 12, face = "bold"),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none" # Remove the legend box
+  )
+
+
+ggsave(here("outputs", "diseases_countries_years.png"), width = 9, height = 7)
+```
+
+
+
+
+```{r, fig.height= 5, fig.width= 6}
+# Aggregate the data at the country level
+country_disease_data <- combined_data %>%
+  group_by(country) %>%
+  summarise(
+    total_zoo = unique(n_zoo),
+    total_resp = unique(n_resp),
+    total_card = unique(n_card)
+  ) %>%
+  pivot_longer(cols = starts_with("total"), 
+               names_to = "disease_group", 
+               values_to = "total_diseases")
+
+# Customize disease group names for the plot
+country_disease_data$disease_group <- factor(country_disease_data$disease_group,
+                                             levels = c("total_resp", "total_card", "total_zoo"),
+                                             labels = c("Respiratory", "Cardiovascular", "Zoonotic/V-B"))
+
+country_disease_data$country <- factor(country_disease_data$country, 
+                                       levels = rev(sort(unique(country_disease_data$country))))
+
+
+
+# Create the bar plot
+country_plot <- ggplot(country_disease_data, 
+                       aes(x = country, y = total_diseases, fill = disease_group)) +
+  geom_bar(stat = "identity") +
+  labs(y = "Total # of Cases", x = "Country", fill = "Disease Group") +
+  scale_fill_manual(values = c('#990000', '#FF9933', '#006633')) +
+  geom_text(aes(label = total_diseases), 
+            position = position_stack(vjust = 0.5),  # Adjusting the position
+            size = 4, 
+            color = "white") +  # Adding text labels with the counts
+  coord_flip() +
+  labs(x = " ",
+       y = "Number of diseases",
+       fill = " ") + 
+  theme(legend.position = c(0.86, 0.03),  # Adjusting legend position
+        legend.justification = "bottom",  # Adjusting justification
+        legend.box.just = "right")
+
+
+# Display the plot
+print(country_plot)
+
+```
+
+```{r}
+
+# Adjust data to calculate proportions correctly
+zoonotic_data_pie <- combined_data %>%
+  select(country, chagas, hantavirus, cutaneous_leishmaniasis, visceral_leishmaniasis, rickettsia, malaria) %>%
+  group_by(country) %>%
+  summarise(across(everything(), ~ sum(.x, na.rm = TRUE))) %>%
+  pivot_longer(cols = -country, 
+               names_to = "disease", 
+               values_to = "total_diseases") %>%
+  group_by(country) %>%  # Ensure proportions are calculated per country
+  mutate(
+    total_diseases = ifelse(is.na(total_diseases), 0, total_diseases),  # Handle NA values
+    proportion = total_diseases / sum(total_diseases) * 100,        # Calculate proportions for each country
+    disease = factor(disease, 
+                     levels = unique(disease),
+                     labels = c("Chagas", "Hantavirus", "Cutaneous Leish.", 
+                                "Visceral Leish.", "Rickettsia", "Malaria"))
+  ) %>%
+  ungroup()  # Ungroup after calculations
+```
+
+```{r}
+# Create proportional pie charts with vertical arrangement
+pie_chart_vertical <- ggplot(zoonotic_data_pie, aes(x = "", y = proportion, fill = disease)) +
+  geom_bar(stat = "identity", width = 1.5) +  # Increased width for larger pies
+  coord_polar(theta = "y") +
+  facet_grid(country ~ ., switch = "y") +  # Align pies vertically with strip text on the left
+  scale_fill_manual(values = c('#A9DFBF', '#58D68D', '#28B463', '#1D8348', '#117A65', '#0E6655')) +
+  labs(fill = "", title = "Zoonotic/Vector-Borne Diseases") +
+  theme_void() +  # Simplify chart for clean pie visualization
+  theme(
+    legend.position = "right",  # Place the legend to the right
+    legend.text = element_text(size = 10),
+    strip.text.y = element_text(size = 12, face = "bold", angle = 0),  # Larger strip text for countries
+    plot.margin = margin(10, 10, 10, 10)  # Add space around the plot
+  )
+
+# Display the updated pie chart
+print(pie_chart_vertical)
+
+```
+
+```{r, fig.width= 10}
+country_plot + pie_chart_vertical + plot_layout(widths = c(3,1))
+ggsave(here("outputs", "diseases_countries.png"), width = 11, height = 5)
+```
+
+## Number of cases per country
+```{r, fig.width= 30, fig.height= 20}
+# Define the full range of years
+full_years <- seq(2000, max(combined_data$year))
+ 
+grouped_data <- combined_data %>%
+  select(country, year, respiratory, cardiovascular, zoonotic) %>%
+  group_by(country, year) %>%
+  summarise(
+    total_resp = sum(respiratory, na.rm = TRUE),
+    total_card = sum(cardiovascular, na.rm = TRUE),
+    total_zoo = sum(zoonotic, na.rm = TRUE)
+  ) %>%
+  pivot_longer(cols = starts_with("total"), 
+               names_to = "disease_group", 
+               values_to = "total_cases") %>%
+  mutate(
+    disease_group = factor(disease_group,
+                           levels = c("total_resp", "total_card", "total_zoo"),
+                           labels = c("Respiratory", "Cardiovascular", "Zoonotic/V-B"))
+  )
+
+country_plots <- grouped_data %>%
+  group_split(country) %>%
+  setNames(unique(grouped_data$country)) %>%
+  lapply(function(data) {
+    ggplot(data, aes(x = year, y = total_cases, fill = disease_group)) +
+      geom_bar(stat = "identity", position = "dodge", width = 0.8) +  # Adjust bar width here
+      scale_fill_manual(values = c('#990000', '#FF9933', '#006633')) +
+      scale_x_continuous(
+        breaks = seq(min(data$year), max(data$year), by = 5),  # Show ticks every 5 years
+        labels = seq(min(data$year), max(data$year), by = 5)
+      ) +
+      labs(title = unique(data$country)) +  # Add country name as the title
+      theme(
+        legend.title = element_blank(),
+        legend.position = "top",  # Place legends above plots
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 12, face = "bold", hjust = 0.5)  # Center country titles
+      ) + 
+      labs(y = "Total # of Cases", x = "Year")
+  })
+
+# Save plots to files or display them
+for (i in seq_along(country_plots)) {
+  ggsave(
+    filename = paste0("outputs/cases_per_year_", unique(grouped_data$country)[i], ".png"),
+    plot = country_plots[[i]],
+    width = 8, height = 6
+  )
+}
+
+# Combine all plots into a single panel
+panel <- wrap_plots(country_plots, ncol = 3) +
+  plot_layout(guides='collect') + plot_annotation(tag_levels = "a")  &
+  theme(legend.position='right') &
+  labs(x = NULL, y = NULL) # Suppress individual plot titles
+
+  
+
+add_global_label <- function(pwobj, Xlab = NULL, Ylab = NULL, Xgap = 0.03, Ygap = 0.03, ...) {
+  ylabgrob <- patchwork::plot_spacer()
+  if (!is.null(Ylab)) {
+    ylabgrob <- ggplot() +
+      geom_text(aes(x = .5, y = .5), label = Ylab, angle = 90, ...) +
+      theme_void()
+  }
+  if (!is.null(Xlab)) {
+    xlabgrob <- ggplot() +
+      geom_text(aes(x = .5, y = .5), label = Xlab, ...) +
+      theme_void()
+  }
+  if (!is.null(Ylab) & is.null(Xlab)) {
+    return((ylabgrob + patchworkGrob(pwobj)) + 
+             patchwork::plot_layout(widths = 100 * c(Ygap, 1 - Ygap)))
+  }
+  if (is.null(Ylab) & !is.null(Xlab)) {
+    return((ylabgrob + pwobj) + 
+             (xlabgrob) +
+             patchwork::plot_layout(heights = 100 * c(1 - Xgap, Xgap),
+                                    widths = c(0, 100),
+                                    design = "
+                                   AB
+                                   CC
+                                   "
+             ))
+  }
+  if (!is.null(Ylab) & !is.null(Xlab)) {
+    return((ylabgrob + pwobj) + 
+             (xlabgrob) +
+             patchwork::plot_layout(heights = 100 * c(1 - Xgap, Xgap),
+                                    widths = 100 * c(Ygap, 1 - Ygap),
+                                    design = "
+                                   AB
+                                   CC
+                                   "
+             ))
+  }
+  return(pwobj)
+}
+
+
+final_panel <- panel %>%
+  add_global_label(Ylab = "Total # of Cases",
+                   Xlab = "Year",
+                         size = 5,
+                        Ygap = 0.04) + 
+  plot_annotation(tag_levels = 'a')
+
+print(final_panel)
+
+ggsave(here("outputs", "cases_countries.png"), width = 11, height = 9)
+```
+
+## Individual zoonotic and vector-borne diseases
+
+```{r, fig.width = 10, fig.height = 8}
+# Prepare data for zoonotic diseases with a consistent x-axis range
+zoonotic_data <- combined_data %>%
+  select(country, year, chagas, hantavirus, cutaneous_leishmaniasis, visceral_leishmaniasis, rickettsia, malaria) %>%
+  pivot_longer(cols = -c(country, year), 
+               names_to = "disease", 
+               values_to = "total_cases") %>%
+  complete(country, year = full_years, disease, fill = list(total_cases = 0)) %>%  # Fill missing years with 0
+  group_by(country, year, disease) %>%
+  summarise(total_cases = sum(total_cases, na.rm = TRUE), .groups = "drop") %>%
+  mutate(
+    disease = factor(disease,
+                     levels = c("chagas", "hantavirus", "cutaneous_leishmaniasis", 
+                                "visceral_leishmaniasis", "rickettsia", "malaria"),
+                     labels = c("Chagas", "Hantavirus", "Cutaneous Leishmaniasis", 
+                                "Visceral Leishmaniasis", "Rickettsia", "Malaria"))
+  )
+
+# Define the color palette
+zoonotic_palette <- c('#A9DFBF', '#58D68D', '#28B463', '#1D8348', '#117A65', '#0E6655')
+
+# Create individual plots for each country
+zoonotic_plots <- zoonotic_data %>%
+  group_split(country) %>%
+  setNames(unique(zoonotic_data$country)) %>%
+  lapply(function(data) {
+    ggplot(data, aes(x = factor(year), y = total_cases, fill = disease)) +
+      geom_bar(stat = "identity", position = "dodge", width = 1) +  # Consistent bar width
+      scale_fill_manual(values = zoonotic_palette) +
+      scale_x_discrete(
+        breaks = as.character(seq(2000, max(full_years), by = 5)),  # Show ticks every 5 years
+        labels = seq(2000, max(full_years), by = 5)
+      ) +
+      labs(title = unique(data$country)) +
+      theme(
+        legend.title = element_blank(),
+        legend.position = "top",
+        axis.text.x = element_text(angle = 45, hjust = 1),
+        plot.title = element_text(size = 12, face = "bold", hjust = 0.5)
+      ) + 
+      labs(y = "Total # of Cases", x = "Year")
+  })
+
+# Combine all plots into a single panel
+zoonotic_panel <- wrap_plots(zoonotic_plots, ncol = 3) +
+  plot_layout(guides = "collect") + plot_annotation(tag_levels = "a")  & 
+  theme(legend.position = "right") &
+  labs(x = NULL, y = NULL)
+
+
+# Add shared y-axis label using `add_global_label`
+final_zoonotic_panel <- zoonotic_panel %>%
+  add_global_label(
+    Ylab = "Total # of Cases",
+    Xlab = "Year",
+    size = 5,
+    Ygap = 0.04
+  ) + 
+  plot_annotation(tag_levels = 'a')
+
+# Display the final panel
+print(final_zoonotic_panel)
+
+# Save the combined panel
+ggsave(here("outputs", "zoonotic_cases_countries.png"), width = 10, height = 8)
+```
+
+# ENVIRONMENTAL INDICATORS
+
+Summary of environmental indicators and data sources
+```{r}
+data_structure <- tibble::tibble(
+  Indicator = c(
+    "Forest Cover Metrics", 
+    "Fragmentation Metrics", 
+    "Savanna Cover Metrics", 
+    "Fire-related Indicators", 
+    "PM2.5 (Calibrated)", 
+    "Burned Area", 
+    "Indigenous Territories"
+  ),
+  Description = c(
+    "Proportion of forest cover within and outside Indigenous Territories (ITs)", 
+    "Forest edge density, patch density, and aggregation index", 
+    "Proportion of savanna cover within municipalities", 
+    "Number of fire events and related pollution (PM2.5)", 
+    "PM2.5 concentrations derived from MAIAC AOD and calibrated with SEDAC data", 
+    "Accumulated burned area (sum of pixels burned at least once) and burn frequency", 
+    "Status (recognized/unrecognized), boundaries, and coverage of ITs"
+  ),
+  Source = c(
+    "MapBiomas Collection 4", 
+    "MapBiomas Collection 4, Fragstats", 
+    "MapBiomas Collection 4", 
+    "MODIS Terra (MOD14A1), MAIAC AOD, NASA SEDAC", 
+    "MAIAC AOD, NASA SEDAC", 
+    "MODIS Terra (MOD14A1)", 
+    "RAISG"
+  ),
+  Spatial_Resolution = c(
+    "30 m", 
+    "30 m", 
+    "30 m", 
+    "1 km", 
+    "1 km", 
+    "1 km", 
+    "IT boundaries"
+  )
+)
+
+# Render the table using kable and kableExtra for a polished look
+data_structure %>%
+  kable("html", escape = FALSE, col.names = c("Indicator", "Description", "Source", "Spatial Resolution")) %>%
+  kable_styling(full_width = FALSE, bootstrap_options = c("striped", "hover", "condensed", "responsive"))
+
+# Export the table to a CSV file
+write.csv(data_structure, here("data", "summary_indicators.csv"), row.names = FALSE)
+```
+
+
+## Plot showing temporal change landscape
+(forest cover, fragmentation, and fire pollutants.
+
+```{r}
+# color gradient for each country, from darkest to lightest
+color_palette <- c("#3E2723", "#5D4037", "#795548", "#8D6E63", "#A1887F", "#BCAAA4", "#D7CCC8")
+
+country_order <- c("Brasil", "Peru", "Bolivia", "Colombia", "Venezuela", "Suriname", "Ecuador")
+color_mapping <- data.frame(country = country_order, color_code = color_palette)
+```
+
+
+### Forest Cover (for_PLAND)
+```{r}
+data_with_colors <- combined_data %>%
+  dplyr::left_join(color_mapping, by = "country") %>%
+  group_by(country, year) %>%
+  summarise(
+    for_PLAND_mean = mean(for_PLAND, na.rm = TRUE),
+    for_PLAND_sd = sd(for_PLAND, na.rm = TRUE),
+    color_code = unique(color_code)  # Retain color code after grouping
+  ) %>%
+  ungroup() %>%
+  mutate(
+    country = case_when(
+      country == "Bolivia" ~ "BO",
+      country == "Brasil" ~ "BR",
+      country == "Colombia" ~ "CO",
+      country == "Ecuador" ~ "EC",
+      country == "Guiana FR" ~ "GUF",
+      country == "Peru" ~ "PE",
+      country == "Suriname" ~ "SR",
+      country == "Venezuela" ~ "VE",
+      TRUE ~ country  # Keep original value for unmatched cases
+    ),
+    for_PLAND_mean = ifelse(is.nan(for_PLAND_mean), NA, for_PLAND_mean),
+    for_PLAND_sd = ifelse(is.nan(for_PLAND_sd), NA, for_PLAND_sd)
+  ) %>% 
+  drop_na(for_PLAND_mean)
+
+# Find the last year for each country to place the labels
+label_data <- data_with_colors %>%
+  group_by(country) %>%
+  filter(year == max(year)) %>%
+  ungroup()
+
+# Plotting with ribbons for standard deviation and country labels
+(plot_forest_cover <- ggplot(data_with_colors, aes(x = year, y = for_PLAND_mean, group = country)) +
+  geom_line(aes(color = color_code), size = 1) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = pmax(for_PLAND_mean - for_PLAND_sd, 0),  # Ensure ymin is at least 0
+  #     ymax = pmin(for_PLAND_mean + for_PLAND_sd, 100),  # Ensure ymax does not exceed 100
+  #     fill = color_code
+  #   ),
+  #   alpha = 0.1, color = NA
+  # ) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  scale_x_continuous(
+  breaks = seq(2000, 2020, by = 1),  # Ensure all years have a tick
+  labels = seq(2000, 2020, by = 1),  # Explicitly define labels for all ticks
+  expand = c(0, 0)  # No padding on the x-axis
+) +
+  scale_y_continuous(
+    limits = c(0, 100),  # Fix y-axis range from 0 to 100
+    expand = c(0, 0)  # No padding on the y-axis
+  ) +
+  labs(
+    # title = "Forest Percentage Variation Over Years by Country",
+    x = "Year",
+    y = "Forest Cover Percent"
+  ) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size = 16),  # Increase x-axis label size
+    axis.text.y = element_text(size = 16),  # Increase y-axis label size
+    axis.title.x = element_text(size = 16, face = "bold"),  # Increase x-axis title size
+    axis.title.y = element_text(size = 16, face = "bold"),  # Increase y-axis title size
+    plot.title = element_text(size = 16, face = "bold", hjust = 0.5),  # Increase and center title size
+    legend.text = element_text(size = 16),  # Increase legend text size
+    legend.title = element_text(size = 16)  # Increase legend title size
+  ) +
+  geom_text(
+    data = label_data,
+    aes(x = year, y = for_PLAND_mean, label = country, color = color_code),
+    hjust = -0.2,
+    vjust = 0.5,
+    size = 5
+  ) +
+  xlim(2000, 2020))
+```
+
+### Patch Density (for_PD)
+```{r}
+data_with_colors <- combined_data %>%
+  left_join(color_mapping, by = "country") %>%
+  group_by(country, year) %>%
+  summarise(
+    for_PD_mean = mean(for_PD, na.rm = TRUE),
+    for_PD_sd = sd(for_PD, na.rm = TRUE),
+    color_code = unique(color_code)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    country = case_when(
+      country == "Bolivia" ~ "BO",
+      country == "Brasil" ~ "BR",
+      country == "Colombia" ~ "CO",
+      country == "Ecuador" ~ "EC",
+      country == "Guiana FR" ~ "GUF",
+      country == "Peru" ~ "PE",
+      country == "Suriname" ~ "SR",
+      country == "Venezuela" ~ "VE",
+      TRUE ~ country  # Keep original value for unmatched cases
+    ),
+    for_PD_mean = ifelse(is.nan(for_PD_mean), NA, for_PD_mean),
+    for_PD_sd = ifelse(is.nan(for_PD_sd), NA, for_PD_sd)
+  ) %>% 
+  drop_na(for_PD_mean)
+
+label_data <- data_with_colors %>%
+  group_by(country) %>%
+  filter(year == max(year)) %>%
+  ungroup()
+
+
+(plot_patch_density <- ggplot(data_with_colors, aes(x = year, y = for_PD_mean, group = country)) +
+  geom_line(aes(color = color_code), size = 1) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = pmax(for_PD_mean - for_PD_sd, 0),  # Ensure ymin is at least 0
+  #     ymax = for_PD_mean + for_PD_sd,  # No upper limit for patch density
+  #     fill = color_code
+  #   ),
+  #   alpha = 0.1, color = NA
+  # ) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  scale_x_continuous(
+    breaks = seq(2000, 2020, by = 1),
+    labels = seq(2000, 2020, by = 1),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    limits = c(0, NA),  # Start from 0, no upper limit
+    expand = c(0, 0)
+  ) +
+  labs(
+    # title = "Patch Density Over Years by Country",
+    x = "Year",
+    y = "Patch Density"
+  ) +
+  theme_cowplot() +
+  
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size= 16),  # Increase x-axis label size
+    axis.text.y = element_text(size= 16),  # Increase y-axis label size
+    axis.title.x = element_text(size= 16, face = "bold"),  # Increase x-axis title size
+    axis.title.y = element_text(size= 16, face = "bold"),  # Increase y-axis title size
+    plot.title = element_text(size= 16, face = "bold", hjust = 0.5),  # Increase and center title size
+    legend.text = element_text(size= 16),  # Increase legend text size
+    legend.title = element_text(size= 16)  # Increase legend title size
+  ) +
+  geom_text(
+    data = label_data,
+    aes(x = year, y = for_PD_mean, label = country, color = color_code),
+    hjust = -0.2,
+    vjust = 0.5,
+    size= 5
+  ) +
+  xlim(2000, 2020))
+```
+### Edge Density (for_ED)
+```{r}
+data_with_colors <- combined_data %>%
+  left_join(color_mapping, by = "country") %>%
+  group_by(country, year) %>%
+  summarise(
+    for_ED_mean = mean(for_ED, na.rm = TRUE),
+    for_ED_sd = sd(for_ED, na.rm = TRUE),
+    color_code = unique(color_code)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    country = case_when(
+      country == "Bolivia" ~ "BO",
+      country == "Brasil" ~ "BR",
+      country == "Colombia" ~ "CO",
+      country == "Ecuador" ~ "EC",
+      country == "Guiana FR" ~ "GUF",
+      country == "Peru" ~ "PE",
+      country == "Suriname" ~ "SR",
+      country == "Venezuela" ~ "VE",
+      TRUE ~ country  # Keep original value for unmatched cases
+    ),
+    for_ED_mean = ifelse(is.nan(for_ED_mean), NA, for_ED_mean),
+    for_ED_sd = ifelse(is.nan(for_ED_sd), NA, for_ED_sd)
+  ) %>% 
+  drop_na(for_ED_mean)
+
+label_data <- data_with_colors %>%
+  group_by(country) %>%
+  filter(year == max(year)) %>%
+  ungroup()
+
+(plot_edge_density <- ggplot(data_with_colors, aes(x = year, y = for_ED_mean, group = country)) +
+  geom_line(aes(color = color_code), size = 1) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = pmax(for_ED_mean - for_ED_sd, 0),  # Ensure ymin is at least 0
+  #     ymax = for_ED_mean + for_ED_sd,  # No upper limit for edge density
+  #     fill = color_code
+  #   ),
+  #   alpha = 0.1, color = NA
+  # ) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  scale_x_continuous(
+    breaks = seq(2000, 2020, by = 1),
+    labels = seq(2000, 2020, by = 1),
+    expand = c(0, 0)
+  ) +
+  # scale_y_continuous(
+  #   limits = c(0, NA),  # Start from 0, no upper limit
+  #   expand = c(0, 0)
+  # ) +
+  labs(
+    # title = "Edge Density Over Years by Country",
+    x = "Year",
+    y = "Edge Density"
+  ) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size= 16),  # Increase x-axis label size
+    axis.text.y = element_text(size= 16),  # Increase y-axis label size
+    axis.title.x = element_text(size= 16, face = "bold"),  # Increase x-axis title size
+    axis.title.y = element_text(size= 16, face = "bold"),  # Increase y-axis title size
+    plot.title = element_text(size= 16, face = "bold", hjust = 0.5),  # Increase and center title size
+    legend.text = element_text(size= 16),  # Increase legend text size
+    legend.title = element_text(size= 16)  # Increase legend title size
+  ) +
+  geom_text(
+    data = label_data,
+    aes(x = year, y = for_ED_mean, label = country, color = color_code),
+    hjust = -0.2,
+    vjust = 0.5,
+    size= 5
+  ) +
+  xlim(2000, 2020))
+```
+
+### Aggregation Index (for_AI)
+```{r}
+data_with_colors <- combined_data %>%
+  left_join(color_mapping, by = "country") %>%
+  group_by(country, year) %>%
+  summarise(
+    for_AI_mean = mean(for_AI, na.rm = TRUE),
+    for_AI_sd = sd(for_AI, na.rm = TRUE),
+    color_code = unique(color_code)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    country = case_when(
+      country == "Bolivia" ~ "BO",
+      country == "Brasil" ~ "BR",
+      country == "Colombia" ~ "CO",
+      country == "Ecuador" ~ "EC",
+      country == "Guiana FR" ~ "GUF",
+      country == "Peru" ~ "PE",
+      country == "Suriname" ~ "SR",
+      country == "Venezuela" ~ "VE",
+      TRUE ~ country  # Keep original value for unmatched cases
+    ),
+    for_AI_mean = ifelse(is.nan(for_AI_mean), NA, for_AI_mean),
+    for_AI_sd = ifelse(is.nan(for_AI_sd), NA, for_AI_sd)
+  ) %>% 
+  drop_na(for_AI_mean)
+
+label_data <- data_with_colors %>%
+  group_by(country) %>%
+  filter(year == max(year)) %>%
+  ungroup()
+
+(plot_aggregation <- ggplot(data_with_colors, aes(x = year, y = for_AI_mean, group = country)) +
+  geom_line(aes(color = color_code), size = 1) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = pmax(for_AI_mean - for_AI_sd, 0),  # Ensure ymin is at least 0
+  #     ymax = for_AI_mean + for_AI_sd,  # No upper limit for aggregation index
+  #     fill = color_code
+  #   ),
+  #   alpha = 0.1, color = NA
+  # ) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  scale_x_continuous(
+    breaks = seq(2000, 2020, by = 1),
+    labels = seq(2000, 2020, by = 1),
+    expand = c(0, 0)
+  ) +
+  # scale_y_continuous(
+  #   limits = c(0, NA),  # Start from 0, no upper limit
+  #   expand = c(0, 0)
+  # ) +
+  labs(
+    # title = "Aggregation Index Over Years by Country",
+    x = "Year",
+    y = "Aggregation Index"
+  ) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size= 16),  # Increase x-axis label size
+    axis.text.y = element_text(size= 16),  # Increase y-axis label size
+    axis.title.x = element_text(size= 16, face = "bold"),  # Increase x-axis title size
+    axis.title.y = element_text(size= 16, face = "bold"),  # Increase y-axis title size
+    plot.title = element_text(size= 16, face = "bold", hjust = 0.5),  # Increase and center title size
+    legend.text = element_text(size= 16),  # Increase legend text size
+    legend.title = element_text(size= 16)  # Increase legend title size
+  ) +
+  geom_text(
+    data = label_data,
+    aes(x = year, y = for_AI_mean, label = country, color = color_code),
+    hjust = -0.2,
+    vjust = 0.5,
+    size= 5
+  ) +
+  xlim(2000, 2020))
+```
+
+### Fire Pollutant  (pm25_SUM)
+
+Be attentive to Suriname, in which PM values are very high, also the only at country level or might be due to winds in the region - check.
+
+```{r}
+data_with_colors <- combined_data %>%
+  left_join(color_mapping, by = "country") %>%
+  group_by(country, year) %>%
+  summarise(
+    pm25_SUM_mean = mean(pm25_SUM, na.rm = TRUE),
+    pm25_SUM_sd = sd(pm25_SUM, na.rm = TRUE),
+    color_code = unique(color_code)
+  ) %>%
+  ungroup() %>%
+  mutate(
+    country = case_when(
+      country == "Bolivia" ~ "BO",
+      country == "Brasil" ~ "BR",
+      country == "Colombia" ~ "CO",
+      country == "Ecuador" ~ "EC",
+      country == "Guiana FR" ~ "GUF",
+      country == "Peru" ~ "PE",
+      country == "Suriname" ~ "SR",
+      country == "Venezuela" ~ "VE",
+      TRUE ~ country  # Keep original value for unmatched cases
+    ),
+    pm25_SUM_mean = ifelse(is.nan(pm25_SUM_mean), NA, pm25_SUM_mean),
+    pm25_SUM_sd = ifelse(is.nan(pm25_SUM_sd), NA, pm25_SUM_sd)
+  ) %>% 
+  drop_na(pm25_SUM_mean)
+
+label_data <- data_with_colors %>%
+  group_by(country) %>%
+  filter(year == max(year)) %>%
+  ungroup()
+
+(plot_pm25 <- ggplot(data_with_colors, aes(x = year, y = pm25_SUM_mean, group = country)) +
+  geom_line(aes(color = color_code), size = 1) +
+  # geom_ribbon(
+  #   aes(
+  #     ymin = pmax(pm25_SUM_mean - pm25_SUM_sd, 0),  # Ensure ymin is at least 0
+  #     ymax = pm25_SUM_mean + pm25_SUM_sd,  # No upper limit for patch density
+  #     fill = color_code
+  #   ),
+  #   alpha = 0.1, color = NA
+  # ) +
+  scale_color_identity() +
+  scale_fill_identity() +
+  scale_x_continuous(
+    breaks = seq(2000, 2020, by = 1),
+    labels = seq(2000, 2020, by = 1),
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    # limits = c(0, 100000000000),  # Start from 0, no upper limit
+    expand = c(0, 0)
+  ) +
+  labs(
+    # title = "Fire Pollutant (PM2.5) Over Years by Country",
+    x = "Year",
+    y = expression("Fire Pollutant (PM"[2.5]*")")
+  ) +
+  theme_cowplot() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1, size= 16),  # Increase x-axis label size
+    axis.text.y = element_text(size= 16),  # Increase y-axis label size
+    axis.title.x = element_text(size= 16, face = "bold"),  # Increase x-axis title size
+    axis.title.y = element_text(size= 16, face = "bold"),  # Increase y-axis title size
+    plot.title = element_text(size= 16, face = "bold", hjust = 0.5),  # Increase and center title size
+    legend.text = element_text(size= 16),  # Increase legend text size
+    legend.title = element_text(size= 16)  # Increase legend title size
+  ) +
+  geom_text(
+    data = label_data,
+    aes(x = year, y = pm25_SUM_mean, label = country, color = color_code),
+    hjust = -0.2,
+    vjust = 0.5,
+    size= 5
+  ) +
+  xlim(2000, 2020))
+```
+
+```{r, fig.width = 15, fig.height = 9}
+# Remove x-axis labels from individual plots
+plot_forest_cover <- plot_forest_cover + theme(axis.title.x = element_blank())
+plot_pm25 <- plot_pm25 + theme(axis.title.x = element_blank())
+plot_patch_density <- plot_patch_density + theme(axis.title.x = element_blank())
+# plot_aggregation <- plot_aggregation + theme(axis.title.x = element_blank())
+plot_edge_density <- plot_edge_density + theme(axis.title.x = element_blank())
+
+# Create the panel layout with your original positioning
+panel_plot <- (plot_forest_cover | plot_pm25) /
+              (plot_patch_density | plot_aggregation | plot_edge_density) +
+    plot_annotation(tag_levels = 'a')
+
+
+panel_plot
+
+ggsave(here("outputs", "landscape_change.png"), width = 15, height = 9)
+```
+
+
+
