@@ -7,7 +7,7 @@
 
         <meta name="author" content="Julia Barreto" />
     
-        <meta name="date" content="2025-06-26" />
+        <meta name="date" content="2025-06-30" />
     
     <title>Health data across Amazon countries, wrangling</title>
 
@@ -1841,7 +1841,7 @@ wrangling</a></h2>
     <div id="postamble" data-toggle="wy-nav-shift" class="status">
                   <p class="author"><span class="glyphicon glyphicon-user"></span> Julia
 Barreto</p>
-                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2025-06-26</p>
+                        <p class="date"><span class="glyphicon glyphicon-calendar"></span> 2025-06-30</p>
           </div>
    </div>
      
@@ -1989,51 +1989,36 @@ diseases, even if absent (e.g. hantavirus).</p>
 cases and number of diseases:</p>
 <div class="sourceCode" id="cb7"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb7-1"><a href="#cb7-1" tabindex="-1"></a>BR_tidy <span class="ot">&lt;-</span> health_brasil <span class="sc">%&gt;%</span></span>
 <span id="cb7-2"><a href="#cb7-2" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>municipality, <span class="sc">-</span>department, <span class="sc">-</span>scale) <span class="sc">%&gt;%</span></span>
-<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">year=</span> <span class="fu">as.numeric</span>(year))</span>
-<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a></span>
-<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a><span class="fu">head</span>(BR_tidy, <span class="dv">20</span>)</span></code></pre></div>
-<pre><code>##    country       COD year respiratory cardiovascular chagas hantavirus
-## 1   Brasil BR1100015 2008         191              8     NA         NA
-## 2   Brasil BR1100015 2009         210             11     NA         NA
-## 3   Brasil BR1100015 2010         274              8     NA         NA
-## 4   Brasil BR1100015 2011         267              8     NA         NA
-## 5   Brasil BR1100015 2012         216              1     NA         NA
-## 6   Brasil BR1100015 2013         321             13     NA         NA
-## 7   Brasil BR1100015 2014         326             19     NA         NA
-## 8   Brasil BR1100015 2015         319             15     NA         NA
-## 9   Brasil BR1100015 2016         364             17     NA         NA
-## 10  Brasil BR1100015 2017         390             18     NA         NA
-## 11  Brasil BR1100015 2018         394             18     NA         NA
-## 12  Brasil BR1100015 2019         410             23     NA         NA
-## 13  Brasil BR1100015 2020         126             17     NA         NA
-## 14  Brasil BR1100015 2021         159             18     NA         NA
-## 15  Brasil BR1100015 2022         406             29     NA         NA
-## 16  Brasil BR1100015 2023         602             30     NA         NA
-## 17  Brasil BR1100023 2008         340             15     NA          1
-## 18  Brasil BR1100023 2009         629             15     NA         NA
-## 19  Brasil BR1100023 2010         499             26     NA         NA
-## 20  Brasil BR1100023 2011         560             33     NA         NA
-##    cutaneous_leishmaniasis visceral_leishmaniasis malaria zoonotic
-## 1                       28                     NA     207      235
-## 2                       14                     NA      78       92
-## 3                       34                     NA      41       75
-## 4                        9                     NA      16       25
-## 5                       18                     NA      33       51
-## 6                       26                     NA      73       99
-## 7                       37                     NA      79      116
-## 8                       21                     NA      30       51
-## 9                       24                     NA       6       30
-## 10                      20                     NA       2       22
-## 11                      18                     NA       1       19
-## 12                      20                     NA       0       20
-## 13                      22                     NA      NA       22
-## 14                      19                     NA      NA       19
-## 15                      12                     NA      NA       12
-## 16                      NA                     NA      NA        0
-## 17                      70                     NA    1132     1203
-## 18                      76                     NA    1073     1149
-## 19                      53                     NA    1249     1302
-## 20                      29                     NA     497      526</code></pre>
+<span id="cb7-3"><a href="#cb7-3" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">year=</span> <span class="fu">as.numeric</span>(year)) <span class="sc">%&gt;%</span></span>
+<span id="cb7-4"><a href="#cb7-4" tabindex="-1"></a>  <span class="fu">group_by</span>(country, COD, year, respiratory, cardiovascular) <span class="sc">%&gt;%</span></span>
+<span id="cb7-5"><a href="#cb7-5" tabindex="-1"></a>  <span class="fu">summarise</span>(<span class="at">zoonotic =</span> <span class="fu">sum</span>(chagas, hantavirus, cutaneous_leishmaniasis,</span>
+<span id="cb7-6"><a href="#cb7-6" tabindex="-1"></a>                           visceral_leishmaniasis, malaria, <span class="at">na.rm=</span> <span class="cn">TRUE</span>))</span>
+<span id="cb7-7"><a href="#cb7-7" tabindex="-1"></a></span>
+<span id="cb7-8"><a href="#cb7-8" tabindex="-1"></a><span class="fu">head</span>(BR_tidy, <span class="dv">20</span>)</span></code></pre></div>
+<pre><code>## # A tibble: 20 × 6
+## # Groups:   country, COD, year, respiratory [20]
+##    country COD        year respiratory cardiovascular zoonotic
+##    &lt;chr&gt;   &lt;chr&gt;     &lt;dbl&gt;       &lt;int&gt;          &lt;int&gt;    &lt;int&gt;
+##  1 Brasil  BR1100015  2008         191              8      235
+##  2 Brasil  BR1100015  2009         210             11       92
+##  3 Brasil  BR1100015  2010         274              8       75
+##  4 Brasil  BR1100015  2011         267              8       25
+##  5 Brasil  BR1100015  2012         216              1       51
+##  6 Brasil  BR1100015  2013         321             13       99
+##  7 Brasil  BR1100015  2014         326             19      116
+##  8 Brasil  BR1100015  2015         319             15       51
+##  9 Brasil  BR1100015  2016         364             17       30
+## 10 Brasil  BR1100015  2017         390             18       22
+## 11 Brasil  BR1100015  2018         394             18       19
+## 12 Brasil  BR1100015  2019         410             23       20
+## 13 Brasil  BR1100015  2020         126             17       22
+## 14 Brasil  BR1100015  2021         159             18       19
+## 15 Brasil  BR1100015  2022         406             29       12
+## 16 Brasil  BR1100015  2023         602             30        0
+## 17 Brasil  BR1100023  2008         340             15     1203
+## 18 Brasil  BR1100023  2009         629             15     1149
+## 19 Brasil  BR1100023  2010         499             26     1302
+## 20 Brasil  BR1100023  2011         560             33      526</code></pre>
 <div id="number-of-casesdiseasesyear-1" class="section level3">
 <h3>Number of cases/diseases/year</h3>
 <div class="sourceCode" id="cb9"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb9-1"><a href="#cb9-1" tabindex="-1"></a>BR_year <span class="ot">&lt;-</span> health_brasil <span class="sc">%&gt;%</span></span>
@@ -2062,7 +2047,7 @@ cases and number of diseases:</p>
 <span id="cb9-24"><a href="#cb9-24" tabindex="-1"></a>    <span class="fu">left_join</span>(Brasil, <span class="at">by=</span> <span class="st">&quot;diseases&quot;</span>) <span class="sc">%&gt;%</span></span>
 <span id="cb9-25"><a href="#cb9-25" tabindex="-1"></a>    dplyr<span class="sc">::</span><span class="fu">select</span>(diseases, year, n_cases, g_respcard) <span class="sc">%&gt;%</span></span>
 <span id="cb9-26"><a href="#cb9-26" tabindex="-1"></a>    <span class="fu">arrange</span>(diseases))</span></code></pre></div>
-<pre><code>## # A tibble: 128 × 4
+<pre><code>## # A tibble: 112 × 4
 ##    diseases        year n_cases g_respcard    
 ##    &lt;chr&gt;          &lt;dbl&gt;   &lt;int&gt; &lt;chr&gt;         
 ##  1 cardiovascular  2008    6873 cardiovascular
@@ -2075,7 +2060,7 @@ cases and number of diseases:</p>
 ##  8 cardiovascular  2015   10779 cardiovascular
 ##  9 cardiovascular  2016   11237 cardiovascular
 ## 10 cardiovascular  2017   12434 cardiovascular
-## # ℹ 118 more rows</code></pre>
+## # ℹ 102 more rows</code></pre>
 <div class="sourceCode" id="cb11"><pre class="sourceCode r"><code class="sourceCode r"><span id="cb11-1"><a href="#cb11-1" tabindex="-1"></a>master_year <span class="ot">&lt;-</span> BO_year <span class="sc">%&gt;%</span> <span class="co"># join both</span></span>
 <span id="cb11-2"><a href="#cb11-2" tabindex="-1"></a>  <span class="fu">mutate</span>(<span class="at">country=</span> <span class="st">&quot;Bolivia&quot;</span>) <span class="sc">%&gt;%</span> </span>
 <span id="cb11-3"><a href="#cb11-3" tabindex="-1"></a>  <span class="fu">bind_rows</span>(BR_year <span class="sc">%&gt;%</span> <span class="fu">mutate</span>(<span class="at">country=</span> <span class="st">&quot;Brasil&quot;</span>))</span>
@@ -2083,7 +2068,7 @@ cases and number of diseases:</p>
 <span id="cb11-5"><a href="#cb11-5" tabindex="-1"></a></span>
 <span id="cb11-6"><a href="#cb11-6" tabindex="-1"></a>Brasil <span class="sc">%&gt;%</span> <span class="fu">arrange</span>(diseases) <span class="sc">%&gt;%</span> </span>
 <span id="cb11-7"><a href="#cb11-7" tabindex="-1"></a>  dplyr<span class="sc">::</span><span class="fu">select</span>(<span class="sc">-</span>min, <span class="sc">-</span>max)</span></code></pre></div>
-<pre><code>## # A tibble: 8 × 3
+<pre><code>## # A tibble: 7 × 3
 ##   diseases                timespan   g_respcard    
 ##   &lt;chr&gt;                   &lt;chr&gt;      &lt;chr&gt;         
 ## 1 cardiovascular          2008- 2023 cardiovascular
@@ -2092,8 +2077,7 @@ cases and number of diseases:</p>
 ## 4 hantavirus              2008- 2023 zoonotic      
 ## 5 malaria                 2008- 2023 zoonotic      
 ## 6 respiratory             2008- 2023 respiratory   
-## 7 visceral_leishmaniasis  2008- 2023 zoonotic      
-## 8 zoonotic                2008- 2023 zoonotic</code></pre>
+## 7 visceral_leishmaniasis  2008- 2023 zoonotic</code></pre>
 </div>
 </div>
 <div id="colombia" class="section level1">
@@ -3238,7 +3222,7 @@ zoonotic
 </td>
 <td style="text-align:left;width: auto; ">
 chagas; cutaneous_leishmaniasis; hantavirus; malaria;
-visceral_leishmaniasis; zoonotic
+visceral_leishmaniasis
 </td>
 <td style="text-align:left;width: auto; ">
 2008-2023
@@ -4012,22 +3996,22 @@ BR1502400
 2017
 </td>
 <td style="text-align:right;">
-3
+NA
 </td>
 <td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
-15
-</td>
-<td style="text-align:right;">
-1
+NA
 </td>
 <td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
-0
+NA
+</td>
+<td style="text-align:right;">
+NA
 </td>
 <td style="text-align:right;">
 19
@@ -4056,16 +4040,16 @@ NA
 NA
 </td>
 <td style="text-align:right;">
-8
-</td>
-<td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
-602
+NA
+</td>
+<td style="text-align:right;">
+NA
 </td>
 <td style="text-align:right;">
 610
@@ -4094,7 +4078,7 @@ NA
 NA
 </td>
 <td style="text-align:right;">
-4
+NA
 </td>
 <td style="text-align:right;">
 NA
@@ -4132,16 +4116,16 @@ NA
 NA
 </td>
 <td style="text-align:right;">
-30
-</td>
-<td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
 NA
 </td>
 <td style="text-align:right;">
-906
+NA
+</td>
+<td style="text-align:right;">
+NA
 </td>
 <td style="text-align:right;">
 936
@@ -4170,7 +4154,7 @@ NA
 NA
 </td>
 <td style="text-align:right;">
-9
+NA
 </td>
 <td style="text-align:right;">
 NA

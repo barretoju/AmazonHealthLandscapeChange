@@ -127,7 +127,10 @@ Brazilian dataset containing COD, year, diseases groups number of cases and numb
 ```{r}
 BR_tidy <- health_brasil %>%
   dplyr::select(-municipality, -department, -scale) %>%
-  mutate(year= as.numeric(year))
+  mutate(year= as.numeric(year)) %>%
+  group_by(country, COD, year, respiratory, cardiovascular) %>%
+  summarise(zoonotic = sum(chagas, hantavirus, cutaneous_leishmaniasis,
+                           visceral_leishmaniasis, malaria, na.rm= TRUE))
 
 head(BR_tidy, 20)
 ```

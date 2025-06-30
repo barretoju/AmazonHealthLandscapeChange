@@ -112,8 +112,8 @@ disease_labels <- c(
   "cardiovascular" = "Cardiovascular",
   "chagas" = "Chagas",
   "hantavirus" = "Hantavirus",
-  "cutaneous_leishmaniasis" = "Cutaneous Leishmaniasis",
-  "visceral_leishmaniasis" = "Visceral Leishmaniasis",
+  "cutaneous_leishmaniasis" = "Cutaneous leishmaniasis",
+  "visceral_leishmaniasis" = "Visceral leishmaniasis",
   "rickettsial_disease" = "Rickettsial diseases",
   "malaria" = "Malaria"
 )
@@ -255,8 +255,8 @@ zoonotic_data_pie <- combined_data %>%
     proportion = total_diseases / sum(total_diseases) * 100,        # Calculate proportions for each country
     disease = factor(disease, 
                      levels = unique(disease),
-                     labels = c("Chagas", "Hantavirus", "Cutaneous Leish.", 
-                                "Visceral Leish.", "Rickettsial diseases", "Malaria"))
+                     labels = c("Chagas", "Hantavirus", "Cutaneous leishmaniasis", 
+                                "Visceral leishmaniasis", "Rickettsial diseases", "Malaria"))
   ) %>%
   ungroup()  # Ungroup after calculations
 
@@ -281,7 +281,7 @@ print(pie_chart_vertical)
 
 ```{r, fig.width= 8}
 country_plot + pie_chart_vertical + plot_layout(widths = c(3,1))
-ggsave(here("outputs", "figures", "diseases_countries.jpg"), width = 9, height = 5)
+ggsave(here("outputs", "figures", "diseases_countries.jpg"), width = 10, height = 6)
 ```
 
 ## Number of cases per country
